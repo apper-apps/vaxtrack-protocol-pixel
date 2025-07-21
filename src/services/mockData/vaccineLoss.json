@@ -1,0 +1,12 @@
+[
+  {
+    "Id": 1,
+    "vaccineId": "6",
+    "lotNumber": "BF100-2024",
+    "quantity": 5,
+    "reason": "Expired",
+    "details": "Reached expiration date without administration",
+    "reportDate": "2024-10-01",
+    "trainingCompleted": true
+  }
+]

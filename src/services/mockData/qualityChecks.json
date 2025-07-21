@@ -1,0 +1,26 @@
+[
+  {
+    "Id": 1,
+    "vaccineId": "1",
+    "dosesPassed": 1,
+    "dosesFailed": 0,
+    "discrepancyReason": "",
+    "checkDate": "2024-01-15"
+  },
+  {
+    "Id": 2,
+    "vaccineId": "2",
+    "dosesPassed": 20,
+    "dosesFailed": 0,
+    "discrepancyReason": "",
+    "checkDate": "2024-01-20"
+  },
+  {
+    "Id": 3,
+    "vaccineId": "3",
+    "dosesPassed": 10,
+    "dosesFailed": 0,
+    "discrepancyReason": "",
+    "checkDate": "2024-02-01"
+  }
+]

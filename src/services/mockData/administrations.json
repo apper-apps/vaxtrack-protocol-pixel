@@ -1,0 +1,26 @@
+[
+  {
+    "Id": 1,
+    "vaccineId": "2",
+    "lotNumber": "U7908AA",
+    "dosesAdministered": 2,
+    "administrationDate": "2024-10-15",
+    "administeredBy": "Dr. Smith"
+  },
+  {
+    "Id": 2,
+    "vaccineId": "3",
+    "lotNumber": "W1C741M",
+    "dosesAdministered": 5,
+    "administrationDate": "2024-10-20",
+    "administeredBy": "Nurse Johnson"
+  },
+  {
+    "Id": 3,
+    "vaccineId": "4",
+    "lotNumber": "X024135",
+    "dosesAdministered": 4,
+    "administrationDate": "2024-10-25",
+    "administeredBy": "Dr. Brown"
+  }
+]
