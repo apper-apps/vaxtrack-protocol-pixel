@@ -337,8 +337,7 @@ const ReceiveVaccines = () => {
             Cancel
           </Button>
           <Button
-            type="submit"
-            loading={loading}
+type="submit"
             disabled={loading}
           >
             {loading ? (
