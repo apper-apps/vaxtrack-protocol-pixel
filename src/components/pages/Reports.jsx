@@ -81,11 +81,11 @@ const loadVaccines = async () => {
     }));
   };
 
-  const generateReport = () => {
+const generateReport = () => {
     let filteredData = [...vaccines];
 
     // Apply filters
-if (filters.genericName) {
+    if (filters.genericName) {
       filteredData = filteredData.filter(vaccine => 
         vaccine.generic_name?.toLowerCase().includes(filters.genericName.toLowerCase())
       );
@@ -93,7 +93,7 @@ if (filters.genericName) {
 
     if (filters.status !== "all") {
       const now = new Date();
-filteredData = filteredData.filter(vaccine => {
+      filteredData = filteredData.filter(vaccine => {
         const expDate = new Date(vaccine.expiration_date);
         const daysUntilExpiry = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
         
@@ -104,7 +104,7 @@ filteredData = filteredData.filter(vaccine => {
             return daysUntilExpiry < 0;
           case "good":
             return daysUntilExpiry > 30;
-case "low-stock":
+          case "low-stock":
             return (vaccine.quantity_on_hand || 0) <= 5 && (vaccine.quantity_on_hand || 0) > 0;
           default:
             return true;
@@ -118,10 +118,10 @@ case "low-stock":
       filters: filters,
       data: filteredData,
       summary: {
-totalDoses: filteredData.reduce((sum, v) => sum + (v.quantity_on_hand || 0), 0),
+        totalDoses: filteredData.reduce((sum, v) => sum + (v.quantity_on_hand || 0), 0),
         totalAdministered: filteredData.reduce((sum, v) => sum + (v.administered_doses || 0), 0),
         expiringCount: filteredData.filter(v => {
-const daysUntilExpiry = Math.ceil((new Date(v.expiration_date) - new Date()) / (1000 * 60 * 60 * 24));
+          const daysUntilExpiry = Math.ceil((new Date(v.expiration_date) - new Date()) / (1000 * 60 * 60 * 24));
           return daysUntilExpiry <= 30 && daysUntilExpiry >= 0;
         }).length,
         expiredCount: filteredData.filter(v => {
@@ -130,9 +130,7 @@ const daysUntilExpiry = Math.ceil((new Date(v.expiration_date) - new Date()) / (
         }).length,
         lowStockCount: filteredData.filter(v => (v.quantity_on_hand || 0) <= 5 && (v.quantity_on_hand || 0) > 0).length
       }
-      }
     };
-
     setGeneratedReport(reportData);
   };
 
