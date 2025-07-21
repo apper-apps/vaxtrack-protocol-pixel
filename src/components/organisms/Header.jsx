@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useState, useContext } from "react";
+import { useSelector } from 'react-redux';
 import Button from "@/components/atoms/Button";
 import ApperIcon from "@/components/ApperIcon";
+import { AuthContext } from '../../App';
 
 const Header = ({ onMenuToggle }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const { user } = useSelector((state) => state.user);
+  const { logout } = useContext(AuthContext);
 
   // Update time every minute
   useState(() => {
@@ -51,9 +55,27 @@ const Header = ({ onMenuToggle }) => {
             </span>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span className="text-sm text-secondary-600">System Online</span>
+<div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-sm text-secondary-600">System Online</span>
+            </div>
+            
+            {user && (
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-secondary-600">
+                  {user.firstName} {user.lastName}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={logout}
+                  className="text-secondary-600 hover:text-secondary-900"
+                >
+                  <ApperIcon name="LogOut" className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

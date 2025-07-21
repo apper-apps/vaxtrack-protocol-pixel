@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { format } from "date-fns";
-import Card from "@/components/atoms/Card";
-import Button from "@/components/atoms/Button";
+import ApperIcon from "@/components/ApperIcon";
+import Empty from "@/components/ui/Empty";
+import Error from "@/components/ui/Error";
+import Loading from "@/components/ui/Loading";
+import Inventory from "@/components/pages/Inventory";
 import FormField from "@/components/molecules/FormField";
 import ExpirationBadge from "@/components/molecules/ExpirationBadge";
-import Loading from "@/components/ui/Loading";
-import Error from "@/components/ui/Error";
-import Empty from "@/components/ui/Empty";
-import ApperIcon from "@/components/ApperIcon";
-import { vaccineService } from "@/services/api/vaccineService";
-
+import Card from "@/components/atoms/Card";
+import Button from "@/components/atoms/Button";
 const Reports = () => {
   const [vaccines, setVaccines] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,14 +26,48 @@ const Reports = () => {
     loadVaccines();
   }, []);
 
-  const loadVaccines = async () => {
+const loadVaccines = async () => {
     try {
       setLoading(true);
       setError("");
-      const data = await vaccineService.getAll();
+      
+      const { ApperClient } = window.ApperSDK;
+      const apperClient = new ApperClient({
+        apperProjectId: import.meta.env.VITE_APPER_PROJECT_ID,
+        apperPublicKey: import.meta.env.VITE_APPER_PUBLIC_KEY
+      });
+      
+      const params = {
+        fields: [
+          { field: { Name: "Name" } },
+          { field: { Name: "commercial_name" } },
+          { field: { Name: "generic_name" } },
+          { field: { Name: "lot_number" } },
+          { field: { Name: "quantity_on_hand" } },
+          { field: { Name: "administered_doses" } },
+          { field: { Name: "expiration_date" } }
+        ]
+      };
+      
+      const response = await apperClient.fetchRecords("vaccine", params);
+      
+      if (!response.success) {
+        console.error(response.message);
+        setError(response.message);
+        setVaccines([]);
+        return;
+      }
+      
+      const data = response.data || [];
       setVaccines(data);
     } catch (err) {
+      if (err?.response?.data?.message) {
+        console.error("Error loading vaccine data:", err?.response?.data?.message);
+      } else {
+        console.error(err.message);
+      }
       setError("Failed to load vaccine data. Please try again.");
+      setVaccines([]);
     } finally {
       setLoading(false);
     }
@@ -52,16 +85,16 @@ const Reports = () => {
     let filteredData = [...vaccines];
 
     // Apply filters
-    if (filters.genericName) {
+if (filters.genericName) {
       filteredData = filteredData.filter(vaccine => 
-        vaccine.genericName.toLowerCase().includes(filters.genericName.toLowerCase())
+        vaccine.generic_name?.toLowerCase().includes(filters.genericName.toLowerCase())
       );
     }
 
     if (filters.status !== "all") {
       const now = new Date();
-      filteredData = filteredData.filter(vaccine => {
-        const expDate = new Date(vaccine.expirationDate);
+filteredData = filteredData.filter(vaccine => {
+        const expDate = new Date(vaccine.expiration_date);
         const daysUntilExpiry = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
         
         switch (filters.status) {
@@ -71,8 +104,8 @@ const Reports = () => {
             return daysUntilExpiry < 0;
           case "good":
             return daysUntilExpiry > 30;
-          case "low-stock":
-            return vaccine.quantityOnHand <= 5 && vaccine.quantityOnHand > 0;
+case "low-stock":
+            return (vaccine.quantity_on_hand || 0) <= 5 && (vaccine.quantity_on_hand || 0) > 0;
           default:
             return true;
         }
@@ -85,18 +118,18 @@ const Reports = () => {
       filters: filters,
       data: filteredData,
       summary: {
-        totalVaccines: filteredData.length,
-        totalDoses: filteredData.reduce((sum, v) => sum + v.quantityOnHand, 0),
-        totalAdministered: filteredData.reduce((sum, v) => sum + (v.administeredDoses || 0), 0),
+totalDoses: filteredData.reduce((sum, v) => sum + (v.quantity_on_hand || 0), 0),
+        totalAdministered: filteredData.reduce((sum, v) => sum + (v.administered_doses || 0), 0),
         expiringCount: filteredData.filter(v => {
-          const daysUntilExpiry = Math.ceil((new Date(v.expirationDate) - new Date()) / (1000 * 60 * 60 * 24));
+const daysUntilExpiry = Math.ceil((new Date(v.expiration_date) - new Date()) / (1000 * 60 * 60 * 24));
           return daysUntilExpiry <= 30 && daysUntilExpiry >= 0;
         }).length,
         expiredCount: filteredData.filter(v => {
-          const daysUntilExpiry = Math.ceil((new Date(v.expirationDate) - new Date()) / (1000 * 60 * 60 * 24));
+          const daysUntilExpiry = Math.ceil((new Date(v.expiration_date) - new Date()) / (1000 * 60 * 60 * 24));
           return daysUntilExpiry < 0;
         }).length,
-        lowStockCount: filteredData.filter(v => v.quantityOnHand <= 5 && v.quantityOnHand > 0).length
+        lowStockCount: filteredData.filter(v => (v.quantity_on_hand || 0) <= 5 && (v.quantity_on_hand || 0) > 0).length
+      }
       }
     };
 
@@ -108,19 +141,19 @@ const Reports = () => {
 
     const csvContent = [
       ["Commercial Name", "Generic Name", "Lot Number", "Quantity On Hand", "Administered", "Expiration Date", "Status"].join(","),
-      ...generatedReport.data.map(vaccine => {
-        const daysUntilExpiry = Math.ceil((new Date(vaccine.expirationDate) - new Date()) / (1000 * 60 * 60 * 24));
+...generatedReport.data.map(vaccine => {
+        const daysUntilExpiry = Math.ceil((new Date(vaccine.expiration_date) - new Date()) / (1000 * 60 * 60 * 24));
         let status = "Good";
         if (daysUntilExpiry < 0) status = "Expired";
         else if (daysUntilExpiry <= 30) status = "Expiring Soon";
         
         return [
-          vaccine.commercialName,
-          vaccine.genericName,
-          vaccine.lotNumber,
-          vaccine.quantityOnHand,
-          vaccine.administeredDoses || 0,
-          vaccine.expirationDate,
+          vaccine.commercial_name,
+          vaccine.generic_name,
+          vaccine.lot_number,
+          vaccine.quantity_on_hand,
+          vaccine.administered_doses || 0,
+          vaccine.expiration_date,
           status
         ].join(",");
       })
@@ -256,7 +289,7 @@ const Reports = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               <div className="text-center">
                 <p className="text-2xl font-bold text-secondary-900">
-                  {generatedReport.summary.totalVaccines}
+{generatedReport.summary.totalVaccines || generatedReport.data.length}
                 </p>
                 <p className="text-sm text-secondary-600">Total Vaccines</p>
               </div>
@@ -322,24 +355,24 @@ const Reports = () => {
                 {generatedReport.data.map((vaccine) => (
                   <tr key={vaccine.Id} className="hover:bg-secondary-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-secondary-900">
-                      {vaccine.commercialName}
+                      {vaccine.commercial_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-600">
-                      {vaccine.genericName}
+                      {vaccine.generic_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-600">
-                      {vaccine.lotNumber}
+                      {vaccine.lot_number}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-900">
-                      <span className={`font-medium ${vaccine.quantityOnHand <= 5 ? "text-red-600" : ""}`}>
-                        {vaccine.quantityOnHand}
+                      <span className={`font-medium ${(vaccine.quantity_on_hand || 0) <= 5 ? "text-red-600" : ""}`}>
+                        {vaccine.quantity_on_hand}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-600">
-                      {vaccine.administeredDoses || 0}
+                      {vaccine.administered_doses || 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <ExpirationBadge expirationDate={vaccine.expirationDate} />
+                      <ExpirationBadge expirationDate={vaccine.expiration_date} />
                     </td>
                   </tr>
                 ))}

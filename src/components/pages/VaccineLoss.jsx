@@ -7,9 +7,6 @@ import Loading from "@/components/ui/Loading";
 import Error from "@/components/ui/Error";
 import Empty from "@/components/ui/Empty";
 import ApperIcon from "@/components/ApperIcon";
-import { vaccineService } from "@/services/api/vaccineService";
-import { vaccineLossService } from "@/services/api/vaccineLossService";
-
 const VaccineLoss = () => {
   const [vaccines, setVaccines] = useState([]);
   const [lossReports, setLossReports] = useState([]);
@@ -41,17 +38,77 @@ const VaccineLoss = () => {
     loadData();
   }, []);
 
-  const loadData = async () => {
+const loadData = async () => {
     try {
       setLoading(true);
       setError("");
-      const [vaccineData, lossData] = await Promise.all([
-        vaccineService.getAll(),
-        vaccineLossService.getAll()
+      
+      const { ApperClient } = window.ApperSDK;
+      const apperClient = new ApperClient({
+        apperProjectId: import.meta.env.VITE_APPER_PROJECT_ID,
+        apperPublicKey: import.meta.env.VITE_APPER_PUBLIC_KEY
+      });
+      
+      const vaccineParams = {
+        fields: [
+          { field: { Name: "Name" } },
+          { field: { Name: "commercial_name" } },
+          { field: { Name: "generic_name" } },
+          { field: { Name: "lot_number" } },
+          { field: { Name: "quantity_on_hand" } }
+        ],
+        where: [
+          {
+            FieldName: "quantity_on_hand",
+            Operator: "GreaterThan",
+            Values: ["0"]
+          }
+        ]
+      };
+      
+      const lossParams = {
+        fields: [
+          { field: { Name: "Name" } },
+          { field: { Name: "vaccine_id" } },
+          { field: { Name: "lot_number" } },
+          { field: { Name: "quantity" } },
+          { field: { Name: "reason" } },
+          { field: { Name: "details" } },
+          { field: { Name: "report_date" } },
+          { field: { Name: "training_completed" } }
+        ],
+        orderBy: [
+          {
+            fieldName: "report_date",
+            sorttype: "DESC"
+          }
+        ]
+      };
+      
+      const [vaccineResponse, lossResponse] = await Promise.all([
+        apperClient.fetchRecords("vaccine", vaccineParams),
+        apperClient.fetchRecords("vaccine_loss", lossParams)
       ]);
-      setVaccines(vaccineData.filter(v => v.quantityOnHand > 0));
-      setLossReports(lossData);
+      
+      if (!vaccineResponse.success) {
+        console.error(vaccineResponse.message);
+        setError(vaccineResponse.message);
+        return;
+      }
+      
+      if (!lossResponse.success) {
+        console.error(lossResponse.message);
+        // Continue with vaccines even if loss reports fail
+      }
+      
+      setVaccines(vaccineResponse.data || []);
+      setLossReports(lossResponse.data || []);
     } catch (err) {
+      if (err?.response?.data?.message) {
+        console.error("Error loading vaccine loss data:", err?.response?.data?.message);
+      } else {
+        console.error(err.message);
+      }
       setError("Failed to load data. Please try again.");
     } finally {
       setLoading(false);
@@ -69,11 +126,11 @@ const VaccineLoss = () => {
 
     // Auto-fill lot number when vaccine is selected
     if (name === "vaccineId" && value) {
-      const selectedVaccine = vaccines.find(v => v.Id === parseInt(value));
+const selectedVaccine = vaccines.find(v => v.Id === parseInt(value));
       if (selectedVaccine) {
         setFormData(prev => ({
           ...prev,
-          lotNumber: selectedVaccine.lotNumber
+          lotNumber: selectedVaccine.lot_number
         }));
       }
     }
@@ -108,9 +165,9 @@ const VaccineLoss = () => {
 
     // Validate quantity doesn't exceed available
     if (formData.vaccineId && formData.quantity) {
-      const selectedVaccine = vaccines.find(v => v.Id === parseInt(formData.vaccineId));
-      if (selectedVaccine && parseInt(formData.quantity) > selectedVaccine.quantityOnHand) {
-        newErrors.quantity = `Cannot exceed available quantity (${selectedVaccine.quantityOnHand})`;
+const selectedVaccine = vaccines.find(v => v.Id === parseInt(formData.vaccineId));
+      if (selectedVaccine && parseInt(formData.quantity) > selectedVaccine.quantity_on_hand) {
+        newErrors.quantity = `Cannot exceed available quantity (${selectedVaccine.quantity_on_hand})`;
       }
     }
 
@@ -129,26 +186,54 @@ const VaccineLoss = () => {
     setSubmitting(true);
 
     try {
+const { ApperClient } = window.ApperSDK;
+      const apperClient = new ApperClient({
+        apperProjectId: import.meta.env.VITE_APPER_PROJECT_ID,
+        apperPublicKey: import.meta.env.VITE_APPER_PUBLIC_KEY
+      });
+
       // Create loss report
       const lossData = {
-        vaccineId: formData.vaccineId,
-        lotNumber: formData.lotNumber,
+        Name: `Loss Report - ${formData.reason}`,
+        vaccine_id: parseInt(formData.vaccineId),
+        lot_number: formData.lotNumber,
         quantity: parseInt(formData.quantity),
         reason: formData.reason,
         details: formData.details.trim(),
-        trainingCompleted: formData.trainingCompleted
+        training_completed: formData.trainingCompleted,
+        report_date: new Date().toISOString().split("T")[0]
       };
 
-      await vaccineLossService.create(lossData);
+      const lossParams = {
+        records: [lossData]
+      };
+
+      const lossResponse = await apperClient.createRecord("vaccine_loss", lossParams);
+      
+      if (!lossResponse.success) {
+        console.error(lossResponse.message);
+        toast.error(lossResponse.message);
+        return;
+      }
 
       // Update vaccine quantity
       const selectedVaccine = vaccines.find(v => v.Id === parseInt(formData.vaccineId));
-      const newQuantity = selectedVaccine.quantityOnHand - parseInt(formData.quantity);
+      const newQuantity = selectedVaccine.quantity_on_hand - parseInt(formData.quantity);
       
-      await vaccineService.update(selectedVaccine.Id, {
-        quantityOnHand: Math.max(0, newQuantity)
-      });
-
+      const updateParams = {
+        records: [{
+          Id: selectedVaccine.Id,
+          quantity_on_hand: Math.max(0, newQuantity)
+        }]
+      };
+      
+      const updateResponse = await apperClient.updateRecord("vaccine", updateParams);
+      
+      if (!updateResponse.success) {
+        console.error(updateResponse.message);
+        toast.error(updateResponse.message);
+        return;
+      }
       toast.success(`Loss report submitted for ${formData.quantity} doses`);
       
       // Reset form
@@ -164,7 +249,12 @@ const VaccineLoss = () => {
       // Reload data
       loadData();
       
-    } catch (err) {
+} catch (err) {
+      if (err?.response?.data?.message) {
+        console.error("Error submitting loss report:", err?.response?.data?.message);
+      } else {
+        console.error(err.message);
+      }
       toast.error("Failed to submit loss report. Please try again.");
     } finally {
       setSubmitting(false);
@@ -221,9 +311,9 @@ const VaccineLoss = () => {
                   className="block w-full px-3 py-2 border border-secondary-200 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 >
                   <option value="">Select vaccine...</option>
-                  {vaccines.map(vaccine => (
+{vaccines.map(vaccine => (
                     <option key={vaccine.Id} value={vaccine.Id}>
-                      {vaccine.commercialName} ({vaccine.genericName}) - {vaccine.quantityOnHand} available
+                      {vaccine.commercial_name} ({vaccine.generic_name}) - {vaccine.quantity_on_hand} available
                     </option>
                   ))}
                 </select>
@@ -248,7 +338,7 @@ const VaccineLoss = () => {
                 error={errors.quantity}
                 placeholder="Number of doses"
                 min="1"
-                max={formData.vaccineId ? vaccines.find(v => v.Id === parseInt(formData.vaccineId))?.quantityOnHand : ""}
+max={formData.vaccineId ? vaccines.find(v => v.Id === parseInt(formData.vaccineId))?.quantity_on_hand : ""}
               />
 
               <FormField
@@ -355,17 +445,17 @@ const VaccineLoss = () => {
             />
           ) : (
             <div className="space-y-4">
-              {lossReports.slice(0, 5).map((report) => {
-                const vaccine = vaccines.find(v => v.Id === parseInt(report.vaccineId));
+{lossReports.slice(0, 5).map((report) => {
+                const vaccine = vaccines.find(v => v.Id === parseInt(report.vaccine_id?.Id || report.vaccine_id));
                 return (
                   <div key={report.Id} className="p-4 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <p className="font-medium text-secondary-900">
-                          {vaccine?.commercialName || "Unknown Vaccine"}
+                          {vaccine?.commercial_name || report.vaccine_id?.Name || "Unknown Vaccine"}
                         </p>
                         <p className="text-sm text-secondary-600">
-                          Lot: {report.lotNumber} • {report.quantity} doses lost
+                          Lot: {report.lot_number} • {report.quantity} doses lost
                         </p>
                         <p className="text-sm text-red-600 mt-1">
                           Reason: {report.reason}
@@ -376,11 +466,11 @@ const VaccineLoss = () => {
                           </p>
                         )}
                       </div>
-                      <div className="text-right">
+<div className="text-right">
                         <p className="text-xs text-secondary-500">
-                          {new Date(report.reportDate).toLocaleDateString()}
+                          {new Date(report.report_date).toLocaleDateString()}
                         </p>
-                        {report.trainingCompleted && (
+                        {report.training_completed && (
                           <ApperIcon name="CheckCircle" className="h-4 w-4 text-green-500 mt-1" />
                         )}
                       </div>

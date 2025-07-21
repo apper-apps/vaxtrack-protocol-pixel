@@ -5,9 +5,6 @@ import Card from "@/components/atoms/Card";
 import Button from "@/components/atoms/Button";
 import FormField from "@/components/molecules/FormField";
 import ApperIcon from "@/components/ApperIcon";
-import { vaccineService } from "@/services/api/vaccineService";
-import { qualityCheckService } from "@/services/api/qualityCheckService";
-
 const ReceiveVaccines = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -122,29 +119,64 @@ const ReceiveVaccines = () => {
     setLoading(true);
 
     try {
+const { ApperClient } = window.ApperSDK;
+      const apperClient = new ApperClient({
+        apperProjectId: import.meta.env.VITE_APPER_PROJECT_ID,
+        apperPublicKey: import.meta.env.VITE_APPER_PUBLIC_KEY
+      });
+
       // Create vaccine record
       const vaccineData = {
-        commercialName: formData.commercialName.trim(),
-        genericName: formData.genericName.trim(),
-        lotNumber: formData.lotNumber.trim(),
+        Name: formData.commercialName.trim(),
+        commercial_name: formData.commercialName.trim(),
+        generic_name: formData.genericName.trim(),
+        lot_number: formData.lotNumber.trim(),
         quantity: parseInt(formData.quantity),
-        expirationDate: formData.expirationDate,
-        receivedDate: formData.receivedDate,
-        quantityOnHand: parseInt(formData.quantityOnHand),
-        administeredDoses: 0
+        expiration_date: formData.expirationDate,
+        received_date: formData.receivedDate,
+        quantity_on_hand: parseInt(formData.quantityOnHand),
+        administered_doses: 0
       };
 
-      const createdVaccine = await vaccineService.create(vaccineData);
+      const vaccineParams = {
+        records: [vaccineData]
+      };
+
+      const vaccineResponse = await apperClient.createRecord("vaccine", vaccineParams);
+      
+      if (!vaccineResponse.success) {
+        console.error(vaccineResponse.message);
+        toast.error(vaccineResponse.message);
+        return;
+      }
+      
+      const createdVaccine = vaccineResponse.results?.[0]?.data;
+      if (!createdVaccine) {
+        toast.error("Failed to create vaccine record");
+        return;
+      }
 
       // Create quality check record
       const qualityData = {
-        vaccineId: createdVaccine.Id.toString(),
-        dosesPassed: parseInt(formData.dosesPassed),
-        dosesFailed: parseInt(formData.dosesFailed),
-        discrepancyReason: formData.discrepancyReason.trim()
+        Name: `Quality Check - ${formData.commercialName}`,
+        vaccine_id: createdVaccine.Id,
+        doses_passed: parseInt(formData.dosesPassed),
+        doses_failed: parseInt(formData.dosesFailed),
+        discrepancy_reason: formData.discrepancyReason.trim(),
+        check_date: new Date().toISOString().split("T")[0]
       };
 
-      await qualityCheckService.create(qualityData);
+      const qualityParams = {
+        records: [qualityData]
+      };
+
+      const qualityResponse = await apperClient.createRecord("quality_check", qualityParams);
+      
+      if (!qualityResponse.success) {
+        console.error(qualityResponse.message);
+        toast.error(qualityResponse.message);
+        return;
+      }
 
       toast.success(`Successfully received ${formData.quantity} doses of ${formData.commercialName}`);
       
@@ -162,7 +194,12 @@ const ReceiveVaccines = () => {
         discrepancyReason: ""
       });
       
-    } catch (err) {
+} catch (err) {
+      if (err?.response?.data?.message) {
+        console.error("Error receiving vaccines:", err?.response?.data?.message);
+      } else {
+        console.error(err.message);
+      }
       toast.error("Failed to receive vaccines. Please try again.");
     } finally {
       setLoading(false);

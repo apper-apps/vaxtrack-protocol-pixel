@@ -8,8 +8,6 @@ import Badge from "@/components/atoms/Badge";
 import Loading from "@/components/ui/Loading";
 import Error from "@/components/ui/Error";
 import ApperIcon from "@/components/ApperIcon";
-import { vaccineService } from "@/services/api/vaccineService";
-
 const Dashboard = () => {
   const navigate = useNavigate();
   const [vaccines, setVaccines] = useState([]);
@@ -24,10 +22,44 @@ const Dashboard = () => {
     try {
       setLoading(true);
       setError("");
-      const data = await vaccineService.getAll();
+      
+      const { ApperClient } = window.ApperSDK;
+      const apperClient = new ApperClient({
+        apperProjectId: import.meta.env.VITE_APPER_PROJECT_ID,
+        apperPublicKey: import.meta.env.VITE_APPER_PUBLIC_KEY
+      });
+      
+      const params = {
+        fields: [
+          { field: { Name: "Name" } },
+          { field: { Name: "commercial_name" } },
+          { field: { Name: "generic_name" } },
+          { field: { Name: "lot_number" } },
+          { field: { Name: "quantity_on_hand" } },
+          { field: { Name: "administered_doses" } },
+          { field: { Name: "expiration_date" } }
+        ]
+      };
+      
+      const response = await apperClient.fetchRecords("vaccine", params);
+      
+      if (!response.success) {
+        console.error(response.message);
+        setError(response.message);
+        setVaccines([]);
+        return;
+      }
+      
+      const data = response.data || [];
       setVaccines(data);
     } catch (err) {
+      if (err?.response?.data?.message) {
+        console.error("Error loading dashboard data:", err?.response?.data?.message);
+      } else {
+        console.error(err.message);
+      }
       setError("Failed to load dashboard data. Please try again.");
+      setVaccines([]);
     } finally {
       setLoading(false);
     }
@@ -42,21 +74,21 @@ const Dashboard = () => {
   }
 
   // Calculate metrics
-  const totalDoses = vaccines.reduce((sum, vaccine) => sum + vaccine.quantityOnHand, 0);
-  const administeredDoses = vaccines.reduce((sum, vaccine) => sum + (vaccine.administeredDoses || 0), 0);
+const totalDoses = vaccines.reduce((sum, vaccine) => sum + (vaccine.quantity_on_hand || 0), 0);
+  const administeredDoses = vaccines.reduce((sum, vaccine) => sum + (vaccine.administered_doses || 0), 0);
   
   const expiringVaccines = vaccines.filter(vaccine => {
-    const daysUntilExpiry = differenceInDays(new Date(vaccine.expirationDate), new Date());
-    return daysUntilExpiry <= 30 && daysUntilExpiry >= 0 && vaccine.quantityOnHand > 0;
+    const daysUntilExpiry = differenceInDays(new Date(vaccine.expiration_date), new Date());
+    return daysUntilExpiry <= 30 && daysUntilExpiry >= 0 && (vaccine.quantity_on_hand || 0) > 0;
   });
   
-  const expiredVaccines = vaccines.filter(vaccine => {
-    const daysUntilExpiry = differenceInDays(new Date(vaccine.expirationDate), new Date());
-    return daysUntilExpiry < 0 && vaccine.quantityOnHand > 0;
+const expiredVaccines = vaccines.filter(vaccine => {
+    const daysUntilExpiry = differenceInDays(new Date(vaccine.expiration_date), new Date());
+    return daysUntilExpiry < 0 && (vaccine.quantity_on_hand || 0) > 0;
   });
 
   const lowStockVaccines = vaccines.filter(vaccine => 
-    vaccine.quantityOnHand <= 5 && vaccine.quantityOnHand > 0
+    (vaccine.quantity_on_hand || 0) <= 5 && (vaccine.quantity_on_hand || 0) > 0
   );
 
   return (
@@ -101,15 +133,15 @@ const Dashboard = () => {
           description="Total doses given"
         />
         <MetricCard
-          title="Expiring Soon"
-          value={expiringVaccines.reduce((sum, v) => sum + v.quantityOnHand, 0)}
+title="Expiring Soon"
+          value={expiringVaccines.reduce((sum, v) => sum + (v.quantity_on_hand || 0), 0)}
           icon="Clock"
           color="warning"
           description="Within 30 days"
         />
         <MetricCard
-          title="Expired Doses"
-          value={expiredVaccines.reduce((sum, v) => sum + v.quantityOnHand, 0)}
+title="Expired Doses"
+          value={expiredVaccines.reduce((sum, v) => sum + (v.quantity_on_hand || 0), 0)}
           icon="AlertTriangle"
           color="danger"
           description="Requires attention"
@@ -131,16 +163,16 @@ const Dashboard = () => {
           
           {expiringVaccines.length > 0 ? (
             <div className="space-y-3">
-              {expiringVaccines.slice(0, 3).map((vaccine) => {
-                const daysLeft = differenceInDays(new Date(vaccine.expirationDate), new Date());
+{expiringVaccines.slice(0, 3).map((vaccine) => {
+                const daysLeft = differenceInDays(new Date(vaccine.expiration_date), new Date());
                 return (
                   <div key={vaccine.Id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                     <div>
-                      <p className="font-medium text-secondary-900">
-                        {vaccine.commercialName}
+<p className="font-medium text-secondary-900">
+                        {vaccine.commercial_name}
                       </p>
                       <p className="text-sm text-secondary-600">
-                        Lot: {vaccine.lotNumber} • {vaccine.quantityOnHand} doses
+                        Lot: {vaccine.lot_number} • {vaccine.quantity_on_hand} doses
                       </p>
                     </div>
                     <Badge variant="warning">
@@ -183,15 +215,15 @@ const Dashboard = () => {
               {lowStockVaccines.slice(0, 3).map((vaccine) => (
                 <div key={vaccine.Id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-200">
                   <div>
-                    <p className="font-medium text-secondary-900">
-                      {vaccine.commercialName}
-                    </p>
-                    <p className="text-sm text-secondary-600">
-                      {vaccine.genericName} • Lot: {vaccine.lotNumber}
+<p className="font-medium text-secondary-900">
+                        {vaccine.commercial_name}
+                      </p>
+                      <p className="text-sm text-secondary-600">
+                        {vaccine.generic_name} • Lot: {vaccine.lot_number}
                     </p>
                   </div>
-                  <Badge variant="danger">
-                    {vaccine.quantityOnHand} left
+<Badge variant="danger">
+                        {vaccine.quantity_on_hand} left
                   </Badge>
                 </div>
               ))}
@@ -228,7 +260,7 @@ const Dashboard = () => {
           </div>
           <div className="text-center p-4 bg-accent-50 rounded-lg">
             <p className="text-2xl font-bold text-accent-600">
-              {vaccines.filter(v => v.quantityOnHand > 0).length}
+{vaccines.filter(v => (v.quantity_on_hand || 0) > 0).length}
             </p>
             <p className="text-sm text-secondary-600">In Stock</p>
           </div>

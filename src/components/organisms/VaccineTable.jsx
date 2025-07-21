@@ -6,14 +6,13 @@ import Input from "@/components/atoms/Input";
 import ExpirationBadge from "@/components/molecules/ExpirationBadge";
 import SearchBar from "@/components/molecules/SearchBar";
 import ApperIcon from "@/components/ApperIcon";
-import { vaccineService } from "@/services/api/vaccineService";
 
 const VaccineTable = ({ showAdministration = false }) => {
   const [vaccines, setVaccines] = useState([]);
   const [filteredVaccines, setFilteredVaccines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [sortField, setSortField] = useState("commercialName");
+  const [sortField, setSortField] = useState("commercial_name");
   const [sortDirection, setSortDirection] = useState("asc");
   const [administrationValues, setAdministrationValues] = useState({});
 
@@ -25,22 +24,66 @@ const VaccineTable = ({ showAdministration = false }) => {
     try {
       setLoading(true);
       setError("");
-      const data = await vaccineService.getAll();
+      
+      const { ApperClient } = window.ApperSDK;
+      const apperClient = new ApperClient({
+        apperProjectId: import.meta.env.VITE_APPER_PROJECT_ID,
+        apperPublicKey: import.meta.env.VITE_APPER_PUBLIC_KEY
+      });
+      
+      const params = {
+        fields: [
+          { field: { Name: "Name" } },
+          { field: { Name: "commercial_name" } },
+          { field: { Name: "generic_name" } },
+          { field: { Name: "lot_number" } },
+          { field: { Name: "quantity" } },
+          { field: { Name: "expiration_date" } },
+          { field: { Name: "received_date" } },
+          { field: { Name: "quantity_on_hand" } },
+          { field: { Name: "administered_doses" } }
+        ],
+        orderBy: [
+          {
+            fieldName: "commercial_name",
+            sorttype: "ASC"
+          }
+        ]
+      };
+      
+      const response = await apperClient.fetchRecords("vaccine", params);
+      
+      if (!response.success) {
+        console.error(response.message);
+        toast.error(response.message);
+        setVaccines([]);
+        setFilteredVaccines([]);
+        return;
+      }
+      
+      const data = response.data || [];
       setVaccines(data);
       setFilteredVaccines(data);
     } catch (err) {
+      if (err?.response?.data?.message) {
+        console.error("Error fetching vaccines:", err?.response?.data?.message);
+      } else {
+        console.error(err.message);
+      }
       setError("Failed to load vaccines. Please try again.");
       toast.error("Failed to load vaccines");
+      setVaccines([]);
+      setFilteredVaccines([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSearch = (searchTerm) => {
+const handleSearch = (searchTerm) => {
     const filtered = vaccines.filter(vaccine => 
-      vaccine.commercialName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      vaccine.genericName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      vaccine.lotNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      vaccine.commercial_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      vaccine.generic_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      vaccine.lot_number?.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredVaccines(filtered);
   };
@@ -54,7 +97,7 @@ const VaccineTable = ({ showAdministration = false }) => {
       let aValue = a[field];
       let bValue = b[field];
 
-      if (field === "expirationDate" || field === "receivedDate") {
+if (field === "expiration_date" || field === "received_date") {
         aValue = new Date(aValue);
         bValue = new Date(bValue);
       }
@@ -76,7 +119,7 @@ const VaccineTable = ({ showAdministration = false }) => {
     }));
   };
 
-  const handleRecordAdministration = async (vaccine) => {
+const handleRecordAdministration = async (vaccine) => {
     const dosesToAdminister = administrationValues[vaccine.Id] || 0;
     
     if (dosesToAdminister <= 0) {
@@ -84,20 +127,49 @@ const VaccineTable = ({ showAdministration = false }) => {
       return;
     }
 
-    if (dosesToAdminister > vaccine.quantityOnHand) {
+    if (dosesToAdminister > vaccine.quantity_on_hand) {
       toast.error("Cannot administer more doses than available");
       return;
     }
 
     try {
-      await vaccineService.updateAdministeredDoses(vaccine.Id, dosesToAdminister);
-      toast.success(`Recorded ${dosesToAdminister} doses for ${vaccine.commercialName}`);
+      const { ApperClient } = window.ApperSDK;
+      const apperClient = new ApperClient({
+        apperProjectId: import.meta.env.VITE_APPER_PROJECT_ID,
+        apperPublicKey: import.meta.env.VITE_APPER_PUBLIC_KEY
+      });
+      
+      const newAdministeredDoses = (vaccine.administered_doses || 0) + dosesToAdminister;
+      const newQuantityOnHand = Math.max(0, vaccine.quantity_on_hand - dosesToAdminister);
+      
+      const params = {
+        records: [{
+          Id: vaccine.Id,
+          administered_doses: newAdministeredDoses,
+          quantity_on_hand: newQuantityOnHand
+        }]
+      };
+      
+      const response = await apperClient.updateRecord("vaccine", params);
+      
+      if (!response.success) {
+        console.error(response.message);
+        toast.error(response.message);
+        return;
+      }
+      
+      toast.success(`Recorded ${dosesToAdminister} doses for ${vaccine.commercial_name}`);
       setAdministrationValues(prev => ({
         ...prev,
         [vaccine.Id]: 0
       }));
       loadVaccines();
     } catch (err) {
+      if (err?.response?.data?.message) {
+        console.error("Error recording administration:", err?.response?.data?.message);
+      } else {
+        console.error(err.message);
+      }
       toast.error("Failed to record administration");
     }
   };
@@ -173,13 +245,13 @@ const VaccineTable = ({ showAdministration = false }) => {
         <table className="min-w-full divide-y divide-secondary-200">
           <thead className="bg-secondary-50">
             <tr>
-              {[
-                { key: "commercialName", label: "Commercial Name" },
-                { key: "genericName", label: "Generic Name" },
-                { key: "lotNumber", label: "Lot Number" },
-                { key: "expirationDate", label: "Expiration" },
-                { key: "quantityOnHand", label: "On Hand" },
-                { key: "administeredDoses", label: "Administered" }
+{[
+                { key: "commercial_name", label: "Commercial Name" },
+                { key: "generic_name", label: "Generic Name" },
+                { key: "lot_number", label: "Lot Number" },
+                { key: "expiration_date", label: "Expiration" },
+                { key: "quantity_on_hand", label: "On Hand" },
+                { key: "administered_doses", label: "Administered" }
               ].map((column) => (
                 <th
                   key={column.key}
@@ -205,25 +277,25 @@ const VaccineTable = ({ showAdministration = false }) => {
           <tbody className="bg-white divide-y divide-secondary-200">
             {filteredVaccines.map((vaccine) => (
               <tr key={vaccine.Id} className="hover:bg-secondary-50">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-secondary-900">
-                  {vaccine.commercialName}
+<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-secondary-900">
+                  {vaccine.commercial_name}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-600">
-                  {vaccine.genericName}
+                  {vaccine.generic_name}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-600">
-                  {vaccine.lotNumber}
+                  {vaccine.lot_number}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <ExpirationBadge expirationDate={vaccine.expirationDate} />
+                  <ExpirationBadge expirationDate={vaccine.expiration_date} />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-900">
-                  <span className={`font-medium ${vaccine.quantityOnHand <= 5 ? "text-red-600" : ""}`}>
-                    {vaccine.quantityOnHand}
+                  <span className={`font-medium ${vaccine.quantity_on_hand <= 5 ? "text-red-600" : ""}`}>
+                    {vaccine.quantity_on_hand}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary-600">
-                  {vaccine.administeredDoses || 0}
+                  {vaccine.administered_doses || 0}
                 </td>
                 {showAdministration && (
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -231,7 +303,7 @@ const VaccineTable = ({ showAdministration = false }) => {
                       <Input
                         type="number"
                         min="0"
-                        max={vaccine.quantityOnHand}
+max={vaccine.quantity_on_hand}
                         value={administrationValues[vaccine.Id] || ""}
                         onChange={(e) => handleAdministrationChange(vaccine.Id, e.target.value)}
                         className="w-20"
