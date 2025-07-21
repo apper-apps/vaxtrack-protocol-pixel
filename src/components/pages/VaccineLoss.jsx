@@ -407,9 +407,8 @@ max={formData.vaccineId ? vaccines.find(v => v.Id === parseInt(formData.vaccineI
                 </div>
               </div>
 
-              <Button
+<Button
                 type="submit"
-                loading={submitting}
                 disabled={submitting}
                 variant="danger"
                 className="w-full"
